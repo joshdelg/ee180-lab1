@@ -127,6 +127,8 @@ read_loop_cond:
     addu    $t1, $s0, $s2       # address of end of the array
     j       print_loop_cond
 
+
+
 print_loop:
     li      $v0, 1              # print_integer
     lw      $a0, 0($t0)         # array[i]
@@ -148,55 +150,108 @@ print_loop_cond:
     addiu   $sp, $sp, 32
     jr      $ra
 
-
-# ADD YOUR CODE HERE! 
-
 radsort: 
     # You will have to use a syscall to allocate
     # temporary storage (mallocs in the C implementation)
     jr      $ra
 
-# a0 is array ptr, a1 is size
-# t0 = i, t1 = arr_ptr, t2 = i < n, t3 = arr[arr_ptr], t4 = largest
-# t5 = largest < arr[arr_ptr], t6 = largest == arr[arr_ptr]
+# ---------- Register Definitions ----------
+# a0 - pointer to first element of array
+# a1 - size of the array, `n`
 find_exp:
-    # Find Largest Loop
+# ---------- Find Largest Loop ----------
+    # ----- Register Definitions -----
+    # t0 - i
+    # t1 - arr_ptr
+    # t2 - condition: i < n
+    # t3 - array[array_ptr]
+    # t4 - `largest`
+    # t5 - condition: largest < array[array_ptr]
+    # t6 - condition: largest == array[array_ptr], then condition: largest <= array[array_ptr] 
     
-    # Init
-    lw $t4, 0($a0) # int largest = arr[0]
-    add $t0, $0, $0 # i = 0
-    add $t1, $a0, $0 # array_ptr = addr
+    # -- Loop Initialization --
+    lw $t4, 0($a0)      # int largest = arr[0]
+    add $t0, $0, $0     # i = 0
+    add $t1, $a0, $0    # array_ptr = addr
 
+    # Jump to loop condition
     j find_largest_test
 
 find_largest_body:
+    # -- Loop Body --
+
     lw $t3, 0($t1) # temp = arr[array_ptr]
 
-    # largest < arr[array_ptr]
-    slt $t5, $t4, $t3
-    seq $t6 $4 $t3
+    slt $t5, $t4, $t3   # largest < arr[array_ptr]
+    seq $t6 $4 $t3      # largest == array[array_ptr]
+    or $t6, $t5, $t6    # t6 = largest <= arr[array_ptr]
 
-    # t6 = largest <= arr[array_ptr]
-    or $t6, $t5, $t6
+    # If not entering if statement, skip the reassignment of largest
     beq $t6 $zero after_set_largest 
-    
-    move $t4 $t3
+    move $t4 $t3 # largest = array[array_ptr]
 
 after_set_largest:
     addi $t0, $t0, 1 # i++
     addiu $t1, $t1, 4 # array_ptr += 4
 
 find_largest_test:
-    slt $t2, $t0, $a1 # i < n
-    bne $t2, $0, find_largest_body
-jr      $ra
+    # -- Loop Condition --
+    slt $t2, $t0, $a1               # i < n
+    bne $t2, $0, find_largest_body  # If condition passed, execute body
+
+# ---------- End Loop ----------
+
+#---------- Exponent Loop ----------
+    # ----- Register Definitions -----
+    # t0 = exp
+    # t1 = RADIX = 10
+    # t2 = condition: largest > RADIX
+    # t3 = condition: largest == RADIX, then largest >= RADIX
+    # t4 = largest
+    
+    # -- Loop Initialization --
+    addi $t0 $0 1 # exp = 1
+    addi $t1 $0 10 # RADIX = 10
+    
+    # Jump to loop condition
+    j exp_loop_test
+
+exp_loop_body:
+    # -- Loop Body --
+
+    # NOTE: Mult/Div results stored in special 64-bit register
+    # For divison, lower 32 = quotient, upper 32 = remainder
+    # mfhi loads upper 32, mflo loads lower 32    
+
+    divu $t4 $t1 # largest / RADIX
+    mflo $t4 # largest = largest / RADIX
+
+    # Special case of multu that discards upper 32 bits. This should be
+    # fine because our inputs will not exceed 32 bit numbers, and exp
+    # will never be greater than our input
+    mul $t0 $t0 $t1 # exp = exp * RADIX
+
+exp_loop_test:
+    # -- Loop Condition --
+    sgt $t2 $t4 $t1 # largest > RADIX
+    seq $t3 $t4 $t1 # largest == RADIX
+    or $t3 $t2 $t3 # largest >= RADIX
+
+    # Jump to body if true
+    bne $t3 $zero exp_loop_body
+
+# ---------- End Loop ----------
+
+# Return exp
+    move $v0 $t0
+    jr      $ra
 
 arrcpy:
     jr      $ra
 
 print:
     li $v0, 1
-    move $a0, $t4
+    move $a0, $t0
     syscall
 
     li $v0, 4
