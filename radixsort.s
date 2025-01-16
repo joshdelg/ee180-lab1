@@ -98,21 +98,24 @@ read_loop_cond:
     bne     $t0, $t1, read_loop 
 
     #---- Call find_exp, then radixsort ------------------------
-    # ADD YOUR CODE HERE! 
 
     # Pass the two arguments in $a0 and $a1 before calling
     # find_exp. Again, make sure to use proper calling 
     # conventions!
 
-    # Somehow do array > 0
+    # TODO: Somehow do array > 0
     move $a0 $s0
     move $a1 $s1
 
-    # Call find_exp
+    # ---- Function call to find_exp() ----
     jal find_exp
+
+    # Load return of find_exp as 3rd argument
+    move $a2 $v0
 
     # Pass the three arguments in $a0, $a1, and $a2 before
     # calling radsort (radixsort)
+    jal radsort
 
 
     #---- Print sorted array -----------------------------------
@@ -150,15 +153,79 @@ print_loop_cond:
     addiu   $sp, $sp, 32
     jr      $ra
 
+# ---------- Register Definitions ----------
+# a0 - pointer to first element of array
+# a1 - size of the array, `n`
+# a2 - exp, the maximum power of RADIX (10) less than the largest element (i.e. 1000 if largest is 1500)
 radsort: 
-    # You will have to use a syscall to allocate
-    # temporary storage (mallocs in the C implementation)
+    # ---------- Set up Stack Frame ----------
+    # Stack Frame Size: 32
+    addiu $sp, $sp, -32 # Move stack pointer to allocate space
+    sw $ra, 28($sp)     # Since we'll be making function calls, save $ra at the top of s.f.
+    # NOTE: Don't think we need to save arguments a0-a2 becuase don't use original values after recursive call
+
+    # ---------- Base Case ----------
+    slti $t0 $a1 2 # t0 = condition: n < 2
+    seq $t1 $a2 $0 # t1 = condition: exp == 0
+    or $t1 $t0 $t1 # t1 = n < 2 || exp == 0
+
+    bne $t1 $0 radsort_exit
+
+    # ---------- Recursive Case ----------
+    # ---------- Register Definitions ----------
+    # We will soon override a0-a2
+    # t0 - pointer to first element of array
+    # t1 - size of the array, `n`
+    # t2 - exp, the maximum power of RADIX (10) less than the largest element (i.e. 1000 if largest is 1500)
+    # t3 - # bytes to alloc (same for both `children` and `children_len` bc. unsigned and unsigned* are 4 bytes)
+    # t4 - address of children
+    # t5 - address of children_len
+    # t6 - RADIX
+
+    move $t0, $a0
+    move $t1, $a1
+    move $t2, $a2
+
+    addiu $t6, $0, 10 # RADIX = 10
+    sll $t3, $t6, 2 # bytes = RADIX * 4
+
+    # --- Malloc `children` ---
+    li      $v0, 9              # sbrk
+    move    $a0, $t3            # set up the argument for sbrk
+    syscall
+    move    $t4, $v0            # the addr of allocated memory
+
+    # --- Malloc `children_len` ---
+    li      $v0, 9              # sbrk
+    move    $a0, $t3            # set up the argument for sbrk
+    syscall
+    move    $t5, $v0            # the addr of allocated memory
+
+    # TODO: --- Init Buckets Loop ---
+
+    # TODO: --- Assign Array Values to Buckets Loop ---
+
+    # TODO: --- Recursive Radsort Loop ---
+
+    # TODO: --- Free Children Array Loop ---
+
+    # TODO: Free Children
+
+    # TODO: Free Children Len
+
+radsort_exit:
+    # ---------- Reset Stack Frame and Return ----------
+    lw $ra, 28($sp)
+    addiu $sp, $sp, 32
     jr      $ra
 
 # ---------- Register Definitions ----------
 # a0 - pointer to first element of array
 # a1 - size of the array, `n`
 find_exp:
+# NOTE: Don't actually think we need to set up the stack frame here
+# Since everything is done in registers and we don't make any function calls
+
 # ---------- Find Largest Loop ----------
     # ----- Register Definitions -----
     # t0 - i
@@ -251,7 +318,7 @@ arrcpy:
 
 print:
     li $v0, 1
-    move $a0, $t0
+    move $a0, $t5
     syscall
 
     li $v0, 4
