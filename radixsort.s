@@ -160,7 +160,7 @@ print_loop_cond:
 radsort: 
     # ---------- Set up Stack Frame ----------
     # Stack Frame Size: 32
-    addiu $sp, $sp, -32 # Move stack pointer to allocate space
+    addiu $sp, $sp, -60 # Move stack pointer to allocate space
     sw $ra, 28($sp)     # Since we'll be making function calls, save $ra at the top of s.f.
     # NOTE: Don't think we need to save arguments a0-a2 becuase don't use original values after recursive call
 
@@ -174,36 +174,97 @@ radsort:
     # ---------- Recursive Case ----------
     # ---------- Register Definitions ----------
     # We will soon override a0-a2
-    # t0 - pointer to first element of array
-    # t1 - size of the array, `n`
-    # t2 - exp, the maximum power of RADIX (10) less than the largest element (i.e. 1000 if largest is 1500)
-    # t3 - # bytes to alloc (same for both `children` and `children_len` bc. unsigned and unsigned* are 4 bytes)
-    # t4 - address of children
-    # t5 - address of children_len
-    # t6 - RADIX
+    # t0 - sp - pointer to first element of array
+    # t1 - sp + 4 - size of the array, `n`
+    # t2 - sp + 8 - exp, the maximum power of RADIX (10) less than the largest element (i.e. 1000 if largest is 1500)
+    # t3 - sp + 12 - # bytes to alloc (same for both `children` and `children_len` bc. unsigned and unsigned* are 4 bytes)
+    # t4 - sp + 16 - address of children
+    # t5 - sp + 20 - address of children_len
+    # t6 - sp + 24 - RADIX
+    # t7 - i/loop variable for all loops
+    # t8 - condition variable for slt
 
-    move $t0, $a0
-    move $t1, $a1
-    move $t2, $a2
+    sw $a0, ($sp)
+    sw $a1, 4($sp)
+    sw $a2, 8($sp)
 
     addiu $t6, $0, 10 # RADIX = 10
+    sw  $t6, 24($sp)
     sll $t3, $t6, 2 # bytes = RADIX * 4
+    sw $t3, 12($sp)
 
     # --- Malloc `children` ---
     li      $v0, 9              # sbrk
     move    $a0, $t3            # set up the argument for sbrk
     syscall
     move    $t4, $v0            # the addr of allocated memory
+    sw      $t4, 16($sp)
 
     # --- Malloc `children_len` ---
     li      $v0, 9              # sbrk
     move    $a0, $t3            # set up the argument for sbrk
     syscall
     move    $t5, $v0            # the addr of allocated memory
+    sw      $t5, 20($sp)
 
     # TODO: --- Init Buckets Loop ---
+    move    $t7 $zero
+    j       bucket_init_test
 
-    # TODO: --- Assign Array Values to Buckets Loop ---
+bucket_init_body:
+    sll $t9, $t7, 2             # temp = i << 2
+    add $t9, $t9, $t5           # temp = temp + addr children len
+    sw $zero 0($t9)
+    addu $t7, 1                 # i += 1
+
+
+bucket_init_test:
+    slt $t8, $t7, $t6           # t8 = i < RADIX
+    beq $t8, 1, bucket_init_body
+
+   # --- Assign Array Values to Buckets Loop ---
+    move    $t7 $zero
+    j       bucket_assign_test
+
+empty_child_len:
+    #     if (children_len[sort_index] == 0)
+    #         children[sort_index] = (unsigned *)malloc(sizeof(unsigned) * n);
+    j non_empty_child_len
+
+bucket_assign_body:
+    move $t2, $sp             # t2 = addr
+    lw $t3, 8($sp)              # t3 = exp
+    lw $t6, 24($sp)             # t6 = RADIX
+    sll $t1, $t7, 2             # t1 = i << 2 = i * 4
+    addu $t1, $t1, $t2           # t1 = t1 + t2
+    lw $t1, 0($t1)               # $t1 = arr[i]
+    divu $t1, $t3               # t1 = arr[i] / exp
+    divu $t1, $t6               # t1 / RADIX
+    mfhi $t1                    # t1 is reminder, t1 is sort_index
+    li   $t1 1                  #move intermediate 1 into unsigned 
+    sw $t2, 20($sp)             #t2 = children_len
+    sll $t1, $t1, 2             # t1 = sort_index << 2 = sort_index * 4
+    add $t2, $t2, $t1            # t2 = children_len + sort_index
+    lw $t3, ($t2)              # t3 = arr[i]
+    beq $t3, 0, empty_child_len # beq arr[i] == 0, empty_children_len_if
+
+non_empty_child_len:
+    addu $t7, 1                 # i += 1
+
+
+bucket_assign_test:
+    lw $t4, 4($sp)             # t2 = addr
+    slt $t8, $t7, $t4           # t8 = i < n
+    beq $t8, 1, bucket_assign_body
+
+    # for (int i = 0; i < n; i++) {
+    #     unsigned sort_index = (array[i] / exp) % RADIX;
+    #     if (children_len[sort_index] == 0)
+    #         children[sort_index] = (unsigned *)malloc(sizeof(unsigned) * n);
+    #     children[sort_index][children_len[sort_index]] = array[i];
+    #     children_len[sort_index]++;
+    # }
+
 
     # TODO: --- Recursive Radsort Loop ---
 
@@ -213,10 +274,15 @@ radsort:
 
     # TODO: Free Children Len
 
+    # move $t0, $ra
+    # jal print
+    # move $ra, $t0
+
+
 radsort_exit:
     # ---------- Reset Stack Frame and Return ----------
     lw $ra, 28($sp)
-    addiu $sp, $sp, 32
+    addiu $sp, $sp, 60
     jr      $ra
 
 # ---------- Register Definitions ----------
@@ -318,7 +384,8 @@ arrcpy:
 
 print:
     li $v0, 1
-    move $a0, $t5
+    #lw $a0, 0($sp)
+    move $a0, $t1
     syscall
 
     li $v0, 4
