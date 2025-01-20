@@ -157,6 +157,7 @@ print_loop_cond:
 # a0 - pointer to first element of array
 # a1 - size of the array, `n`
 # a2 - exp, the maximum power of RADIX (10) less than the largest element (i.e. 1000 if largest is 1500)
+.globl radsort
 radsort: 
     # ---------- Set up Stack Frame ----------
     # Stack Frame Size: 32
@@ -181,24 +182,28 @@ radsort:
     # t4 - sp + 16 - address of children
     # t5 - sp + 20 - address of children_len
     # t6 - sp + 24 - RADIX
+    # ra - sp + 28 - return address
     # t7 - i/loop variable for all loops
     # t8 - condition variable for slt
+    # t9 - 
+    move    $t0, $a0
+    sw      $t0, ($sp) 
+    move    $t1, $a1
+    sw      $t1, 4($sp)
+    move    $t2, $a2
+    sw      $t2, 8($sp)
 
-    sw $a0, ($sp)
-    sw $a1, 4($sp)
-    sw $a2, 8($sp)
-
-    addiu $t6, $0, 10 # RADIX = 10
-    sw  $t6, 24($sp)
-    sll $t3, $t6, 2 # bytes = RADIX * 4
-    sw $t3, 12($sp)
+    addiu   $t6, $0, 10 # RADIX = 10
+    sw      $t6, 24($sp) 
+    sll     $t3, $t6, 2 # bytes = RADIX * 4
+    sw      $t3, 12($sp)
 
     # --- Malloc `children` ---
     li      $v0, 9              # sbrk
     move    $a0, $t3            # set up the argument for sbrk
     syscall
     move    $t4, $v0            # the addr of allocated memory
-    sw      $t4, 16($sp)
+    sw      $t4, 16($sp)        
 
     # --- Malloc `children_len` ---
     li      $v0, 9              # sbrk
@@ -206,56 +211,107 @@ radsort:
     syscall
     move    $t5, $v0            # the addr of allocated memory
     sw      $t5, 20($sp)
-
+    
     # TODO: --- Init Buckets Loop ---
-    move    $t7 $zero
+    # t0 is loop variable
+    # t1 is i * 2
+    # t2 is addr of children
+    # t3 is RADIX
+    # t4 addr of children + offset
+    # t5 is branch indic
+    move    $t0 $zero
+    lw      $t2 16($sp)
+    lw      $t3 24($sp)
     j       bucket_init_test
 
-bucket_init_body:
-    sll $t9, $t7, 2             # temp = i << 2
-    add $t9, $t9, $t5           # temp = temp + addr children len
-    sw $zero 0($t9)
-    addu $t7, 1                 # i += 1
+bucket_init_body: 
+    sll     $t1, $t0, 2             # temp = i << 2
+    add     $t4, $t1, $t2           # temp = temp + addr children len
+    sw      $zero 0($t4)
+    addu    $t0, 1                 # i += 1
 
 
 bucket_init_test:
-    slt $t8, $t7, $t6           # t8 = i < RADIX
-    beq $t8, 1, bucket_init_body
+    slt     $t5, $t0, $t3           # t8 = i < RADIX
+    beq     $t5, 1, bucket_init_body
 
    # --- Assign Array Values to Buckets Loop ---
-    move    $t7 $zero
+    # t0 is loop var
+    # t1 is temp
+    # t2 is original array addr
+    # t3 is temp
+    # t4 is temp
+    # t5 is temp
+    # t6 is children len
+    # t7 is children
+    # t8 is sort index
+
+    move    $t0 $zero
+    lw      $t2, 0($sp)
+    lw      $t6, 20($sp)
+    lw      $t7, 16($sp)
+
     j       bucket_assign_test
 
 empty_child_len:
-    #     if (children_len[sort_index] == 0)
-    #         children[sort_index] = (unsigned *)malloc(sizeof(unsigned) * n);
+            # children[sort_index] = (unsigned *)malloc(sizeof(unsigned) * n);
+    lw      $t1 4($sp)          # t1 = n
+    sll     $t1, $t1, 2            # n * 4
+    li      $v0, 9              # sbrk
+    move    $a0, $t1            # alloc n * 4
+    syscall
+    move    $t5, $v0            # t5 = addr of allocated memory
+    sll     $t4, $t8, 2         # t4 = sort_index << 2 = sort_index * 4
+    add     $t4, $t7, $t4       # t4 = children + sort_index
+    sw      $t5, ($t4)          # children[sort_index] = pointer to mem
     j non_empty_child_len
 
+# .globl bucket_assign_body
 bucket_assign_body:
-    move $t2, $sp             # t2 = addr
-    lw $t3, 8($sp)              # t3 = exp
-    lw $t6, 24($sp)             # t6 = RADIX
-    sll $t1, $t7, 2             # t1 = i << 2 = i * 4
-    addu $t1, $t1, $t2           # t1 = t1 + t2
-    lw $t1, 0($t1)               # $t1 = arr[i]
-    divu $t1, $t3               # t1 = arr[i] / exp
-    divu $t1, $t6               # t1 / RADIX
-    mfhi $t1                    # t1 is reminder, t1 is sort_index
-    li   $t1 1                  #move intermediate 1 into unsigned 
-    sw $t2, 20($sp)             #t2 = children_len
-    sll $t1, $t1, 2             # t1 = sort_index << 2 = sort_index * 4
-    add $t2, $t2, $t1            # t2 = children_len + sort_index
-    lw $t3, ($t2)              # t3 = arr[i]
-    beq $t3, 0, empty_child_len # beq arr[i] == 0, empty_children_len_if
+    sll     $t4, $t0, 2             # t8 = i << 2 = i * 4
+    addu    $t4, $t2, $t4           # t4 (next addr) = t1 + t2
+    lw      $t4, 0($t4)             # $t4 = arr[i]
+    lw      $t3, 8($sp)             # t3 = exp
+    divu    $t4, $t3                # t1 = arr[i] / exp
+    mflo    $t4                     # t4 is reminder
+    lw      $t5, 24($sp)            # t5 = RADIX
+    divu    $t4, $t5                # t1 / RADIX
+    mfhi    $t4                     # t4 is reminder, t4 is sort_index
+    move    $t8, $t4                # t8 = sort index
+    sll     $t4, $t8, 2             # t4 = sort_index << 2 = sort_index * 4
+    add     $t4, $t6, $t4           # t4 = &children_len + sort_index
+    lw      $t4, ($t4)              # t4 = children_len[sort_index]
+    # move $t9, $ra
+    # jal print
+    # move $ra, $t9
+    beq $t4, 0, empty_child_len # beq arr[i] == 0, empty_children_len_if
 
 non_empty_child_len:
-    addu $t7, 1                 # i += 1
+    sll     $t1, $t8, 2             # t4 = sort_index << 2 = sort_index * 4
+    add     $t4, $t6, $t1           # t4 = &children_len + sort_index
+    add     $t5, $t7, $t1           # t5 = &children + sort_index 
+    # move $t9, $ra
+    # jal print
+    # move $ra, $t9
+    lw      $t3, ($t5)              # t3 = *(children + sort index)
+    lw      $t4, ($t4)              # t4 = *(children_len + sort_index)
+    sll     $t4, $t4, 2             # t4 index *= 4
+    add     $t3, $t4, $t3           # t3 = children[sort_index] an addr [t4 index]
+    sll     $t1, $t0, 2             # i = i * 4, t1
+    add     $t1, $t1, $t2           # t1 = i * 4 + orig_array
+    sw      $t1, ($t1)              # t1 = arr[i]
+    sw      $t1, ($t3)            # in t3, place arr[i]
+    # move $t9, $ra
+    # jal print
+    # move $ra, $t9
+
+    addu    $t0, 1                  # i += 1
 
 
 bucket_assign_test:
-    lw $t4, 4($sp)             # t2 = addr
-    slt $t8, $t7, $t4           # t8 = i < n
-    beq $t8, 1, bucket_assign_body
+    lw      $t1 4($sp)              # t1 = n
+    slt     $t4, $t0, $t1           # t8 = i < n
+    beq     $t4, 1, bucket_assign_body
 
     # for (int i = 0; i < n; i++) {
     #     unsigned sort_index = (array[i] / exp) % RADIX;
@@ -384,8 +440,9 @@ arrcpy:
 
 print:
     li $v0, 1
-    #lw $a0, 0($sp)
-    move $a0, $t1
+    lw $t3, ($t2)
+    # lw $a0, 0($t3)
+    move $a0, $t3
     syscall
 
     li $v0, 4
