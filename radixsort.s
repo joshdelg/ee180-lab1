@@ -311,16 +311,69 @@ bucket_assign_test:
     slt     $t4, $t0, $t1           # t8 = i < n
     beq     $t4, 1, bucket_assign_body
 
-    # for (int i = 0; i < n; i++) {
-    #     unsigned sort_index = (array[i] / exp) % RADIX;
-    #     if (children_len[sort_index] == 0)
-    #         children[sort_index] = (unsigned *)malloc(sizeof(unsigned) * n);
-    #     children[sort_index][children_len[sort_index]] = array[i];
-    #     children_len[sort_index]++;
-    # }
-
-
     # TODO: --- Recursive Radsort Loop ---
+    # t0: i
+    # t1: idx
+    # t2: &children_len
+    # t3: &children
+    # t4: temp
+    # t5: temp
+    # t6: i2
+    # t7: array
+    # t8: temp
+    move    $t0, $0
+    move    $t1, $0
+    lw      $t2, 20($sp)
+    lw      $t3, 16($sp)
+    j rad_test
+
+recurse_rad_sort:
+#radsort(children[i], children_len[i], exp/RADIX);
+    j       copy_array_jump
+
+copy_array_body:    
+    sll     $t8, $t6, 2             # t8 = i2 << 2 = i2 * 4
+    add     $t4, $t7, $t1           # dst = array + idx
+    add     $t8, $t4, $t8           # dest = t8 = array + idx + i
+    sll     $t5, $t6, 2             # t5 = i2 << 2 = i2 * 4
+    add     $t5, $t8, $t3           # src = t5 = &(children + t5)
+    # lw      $t5, ($t5)              # t5 = children[i]
+    # sw      $t5, ($t8)              # *t8 = t5 
+    add     $t6, $t6, 1
+
+copy_array_test:
+    sll     $t5, $t6, 2             # t5 = i2 << 2 = i2 * 4
+    add     $t5, $t5, $t2           # t5 = &(children_len + t5)
+    lw      $t5, ($t5)              # t5 = children_len[i]
+    slt     $t5, $t6, $t5           # t8 = i < children_len[i]
+    beq     $t5, 1, copy_array_body
+    j       rest_rad_body
+
+
+rad_body:
+    sll     $t4, $t0, 2             # t4 = i * 4
+    add     $t4, $t2, $t4           # t4 = children_len + i
+    lw      $t4, ($t4)              # t4 = children_len[i]
+    beq     $t4, $0, rest_rad_body
+
+copy_array_jump:
+    move    $t6, $0
+    lw      $t7, ($sp)
+    j       copy_array_test
+
+rest_rad_body:
+    sll     $t4, $t0, 2             # t4 = i * 4
+    add     $t4, $t2, $t4           # t4 = children_len + i
+    lw      $t4, ($t4)              # t4 = children_len[i]
+    add     $t1, $t1, $t4           # idx += children_len[i]
+    addu    $t0, 1                  # i += 1
+
+rad_test:
+    lw      $t4 24($sp)              # t4 = RADIX
+    slt     $t4, $t0, $t4           # t8 = i < RADIX
+    beq     $t4, 1, rad_body
+ 
+
 
     # TODO: --- Free Children Array Loop ---
 
