@@ -287,24 +287,22 @@ bucket_assign_body:
     beq $t4, 0, empty_child_len # beq arr[i] == 0, empty_children_len_if
 
 non_empty_child_len:
-    sll     $t1, $t8, 2             # t4 = sort_index << 2 = sort_index * 4
+    sll     $t1, $t8, 2             # t1 = sort_index << 2 = sort_index * 4
     add     $t4, $t6, $t1           # t4 = &children_len + sort_index
     add     $t5, $t7, $t1           # t5 = &children + sort_index 
-    # move $t9, $ra
-    # jal print
-    # move $ra, $t9
     lw      $t3, ($t5)              # t3 = *(children + sort index)
     lw      $t4, ($t4)              # t4 = *(children_len + sort_index)
     sll     $t4, $t4, 2             # t4 index *= 4
     add     $t3, $t4, $t3           # t3 = children[sort_index] an addr [t4 index]
     sll     $t1, $t0, 2             # i = i * 4, t1
     add     $t1, $t1, $t2           # t1 = i * 4 + orig_array
-    sw      $t1, ($t1)              # t1 = arr[i]
-    sw      $t1, ($t3)            # in t3, place arr[i]
-    # move $t9, $ra
-    # jal print
-    # move $ra, $t9
-
+    lw      $t1, ($t1)              # t1 = arr[i]
+    sw      $t1, ($t3)              # in t3, place arr[i]
+    sll     $t1, $t8, 2             # t1 = sort_index << 2 = sort_index * 4
+    add     $t4, $t6, $t1           # t4 = children_len + sort_index
+    lw      $t3, ($t4)              # t3 = children_len[sort_index]
+    addu    $t3, $t3, 1             # t3 += 1
+    sw      $t3, ($t4)              # children_len[sort_index] = t4 
     addu    $t0, 1                  # i += 1
 
 
@@ -440,7 +438,7 @@ arrcpy:
 
 print:
     li $v0, 1
-    lw $t3, ($t2)
+    lw $t3, ($t4)
     # lw $a0, 0($t3)
     move $a0, $t3
     syscall
